@@ -94,7 +94,6 @@ namespace Bomberman.Client.Screens
             leaderboard.OnClick = () => _game.Screens.Show("leaderboard");
             createLobby.OnClick = async () => {
                 var lobby = await _game.Api.CreateLobbyAsync(2);
-                // Auto-join and switch to lobby screen
                 var joined = await _game.Api.JoinLobbyAsync(lobby.LobbyId);
                 var code = await _game.Api.GetLobbyCodeAsync(joined.LobbyId);
                 _game.LobbyScreenRef.SetLobby(joined, code);
@@ -189,35 +188,66 @@ namespace Bomberman.Client.Screens
         public void TextInput(char c) { }
     }
 
-    // ---------- In-Lobby screen ----------
+    // ---------- In-Lobby screen (now with Start for leader) ----------
     public class LobbyScreen : IScreen
     {
         readonly Game1 _game;
         readonly Button back = new(){ Text="Leave Lobby" };
+        readonly Button start = new(){ Text="Start (Leader)" };
         Lobby? _lobby;
         string _code = "";
         double _poll;
+        string _info = "";
+        string _gameId = "";
 
         public LobbyScreen(Game1 g)
         {
             _game = g;
             back.OnClick = () => { _game.Screens.Show("menu"); };
+            start.OnClick = async () =>
+            {
+                if (_lobby == null) return;
+                try
+                {
+                    var gs = await _game.Api.StartLobbyAsync(_lobby.LobbyId);
+                    _gameId = gs.GameId;
+                    _info = $"Started game: {_gameId}";
+                    // reflect status locally
+                    _lobby.Status = "in-progress";
+                }
+                catch (Exception ex) { _info = ex.Message; }
+            };
         }
-        public void SetLobby(Lobby lobby, string code) { _lobby = lobby; _code = code; }
+        public void SetLobby(Lobby lobby, string code) { _lobby = lobby; _code = code; _info = ""; _gameId = ""; }
         public void OnEnter() { _poll = 0; }
         public async void Update(GameTime t)
         {
             var m = Mouse.GetState(); var k = Keyboard.GetState();
             back.Bounds = new Rectangle(30,30,140,40);
+            start.Bounds = new Rectangle(430, 90, 180, 44);
             back.Update(t,m,k);
-            if (k.IsKeyDown(Keys.Escape)) _game.Screens.Show("menu");
-            // poll lobby state every 2s
+
+            // Poll lobby state every 2s
             _poll += t.ElapsedGameTime.TotalSeconds;
             if (_poll >= 2.0 && _lobby != null)
             {
                 _poll = 0;
                 try { _lobby = await _game.Api.GetLobbyAsync(_lobby.LobbyId); } catch { /* ignore transient */ }
             }
+
+            // Leader-only visibility & enablement
+            if (_lobby != null && _game.Api.Me != null && _lobby.Players.Count >= 2 &&
+                string.Equals(_lobby.Status, "waiting", System.StringComparison.OrdinalIgnoreCase) && _lobby.Players[0].Id == _game.Api.Me.Id)
+            {
+                start.Visible = true;
+                start.Update(t,m,k);
+            }
+            else
+            {
+                start.Visible = false;
+            }
+
+            if (k.IsKeyDown(Keys.Escape)) _game.Screens.Show("menu");
         }
         public void Draw(SpriteBatch sb)
         {
@@ -227,18 +257,15 @@ namespace Bomberman.Client.Screens
                 back.Draw(sb);
                 return;
             }
-            // Big, shareable code box
             var header = "Lobby Code";
             sb.DrawString(Ui.Font, header, new Vector2(120, 60), new Color(200,220,255));
             var box = new Rectangle(120, 90, 300, 80);
             sb.DrawRect(box, new Color(35,45,70));
             sb.DrawFrame(box, new Color(20,25,35), 3);
-            // scale the code
             var measure = Ui.Font.MeasureString(_code);
             var scale = Math.Min( (box.Width-20) / Math.Max(1f, measure.X), (box.Height-20) / Math.Max(1f, measure.Y) );
             sb.DrawString(Ui.Font, _code, new Vector2(box.X + 10, box.Y + 10), Color.White, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
 
-            // Details and players
             sb.DrawString(Ui.Font, $"Lobby: {_lobby.LobbyId}", new Vector2(120, 190), new Color(180,200,240));
             sb.DrawString(Ui.Font, $"Status: {_lobby.Status}", new Vector2(120, 220), new Color(180,200,240));
             sb.DrawString(Ui.Font, "Players:", new Vector2(120, 260), Color.White);
@@ -250,6 +277,10 @@ namespace Bomberman.Client.Screens
                 y += Ui.Font.LineSpacing + 4;
             }
 
+            if (!string.IsNullOrEmpty(_info))
+                sb.DrawString(Ui.Font, _info, new Vector2(120, y + 20), new Color(200,220,255));
+
+            start.Draw(sb);
             back.Draw(sb);
         }
         public void TextInput(char c) { }

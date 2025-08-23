@@ -55,6 +55,17 @@ public class ApiClient
         return obj!.Code;
     }
 
+    public async Task<GameState> StartLobbyAsync(string lobbyId)
+    {
+        var res = await _http.PostAsJsonAsync("/api/lobbies/start", new { lobbyId, token = Token });
+        if (!res.IsSuccessStatusCode)
+        {
+            var err = await res.Content.ReadFromJsonAsync<ErrorResponse>();
+            throw new Exception($"{err?.ErrorCode}: {err?.ErrorMessage}");
+        }
+        return (await res.Content.ReadFromJsonAsync<GameState>())!;
+    }
+
     private class CodeDto { public string Code { get; set; } = ""; }
 }
 

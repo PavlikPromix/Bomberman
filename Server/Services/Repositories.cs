@@ -63,7 +63,7 @@ public class InMemoryLobbyRepo : ILobbyRepo
         _lobbies[lobby.LobbyId] = lobby;
         _max[lobby.LobbyId] = maxPlayers;
 
-        // Assign a unique short code (case-insensitive)
+        // Assign unique short code
         var existing = new HashSet<string>(_codeToLobby.Keys, StringComparer.OrdinalIgnoreCase);
         var code = NewCode(existing);
         _lobbyCode[lobby.LobbyId] = code;
@@ -89,12 +89,12 @@ public class InMemoryLobbyRepo : ILobbyRepo
     public Lobby Join(string lobbyIdOrCode, User user, int maxPlayers)
     {
         var lobby = GetByLobbyOrCode(lobbyIdOrCode) ?? throw new ArgumentException("Lobby not found.");
-        var capacity = _max[lobby.LobbyId]; // ensure we key by real lobbyId
+        var capacity = _max[lobby.LobbyId];
         if (lobby.Players.Any(p => p.Id == user.Id)) return lobby;
         if (lobby.Players.Count >= capacity) throw new ArgumentException("Lobby is full.");
         if (lobby.Status != LobbyStatus.Waiting) throw new ArgumentException("Lobby already in progress.");
         lobby.Players.Add(user);
-        if (lobby.Players.Count >= 2) lobby.Status = LobbyStatus.InProgress; // simplistic start condition
+        // NO auto-start here; leader-controlled start via endpoint
         return lobby;
     }
 }

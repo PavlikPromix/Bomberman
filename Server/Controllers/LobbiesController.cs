@@ -54,14 +54,30 @@ public class LobbiesController : ControllerBase
         var user = _users.FindById(userId) ?? throw new UnauthorizedAccessException("User not found for token.");
         var lobby = _lobbies.GetByLobbyOrCode(req.LobbyId) ?? throw new ArgumentException("Lobby not found.");
 
-        // Retrieve stored capacity (internal); assume 4 default if missing
+        // capacity is managed internally in repo; just join
         var updated = _lobbies.Join(lobby.LobbyId, user, maxPlayers: 4);
-
-        // Auto-start a game when status flips to InProgress
-        if (updated.Status == LobbyStatus.InProgress)
-        {
-            _games.StartForLobby(updated);
-        }
         return Ok(updated);
+    }
+
+    public record StartLobbyRequest(string LobbyId, string Token);
+
+    [HttpPost("start")]
+    public ActionResult<GameState> Start([FromBody] StartLobbyRequest req)
+    {
+        Guard.NotEmpty(req.LobbyId, "lobbyId");
+        Guard.NotEmpty(req.Token, "token");
+
+        var (ok, userId) = _jwt.Validate(req.Token);
+        if (!ok || userId is null) throw new UnauthorizedAccessException("Invalid token.");
+
+        var lobby = _lobbies.GetByLobbyOrCode(req.LobbyId) ?? throw new ArgumentException("Lobby not found.");
+        if (lobby.Players.Count == 0) throw new UnauthorizedAccessException("No players in lobby.");
+        var leaderId = lobby.Players[0].Id;
+        if (leaderId != userId) throw new UnauthorizedAccessException("Only the lobby leader can start the game.");
+        if (lobby.Players.Count < 2) throw new ArgumentException("At least 2 players required to start.");
+
+        lobby.Status = LobbyStatus.InProgress;
+        var game = _games.StartForLobby(lobby);
+        return Ok(game);
     }
 }
