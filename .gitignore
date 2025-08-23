@@ -1,0 +1,47 @@
+# === Global build outputs (any depth) ===
+**/[Bb]in/
+**/[Oo]bj/
+.artifacts/
+.publish/
+.pub/
+
+# === IDE / user- and machine-specific ===
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.sln.iml
+*.jfm
+
+# === OS junk ===
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === Package / tooling caches & logs ===
+*.log
+# NuGet packages (if locally packed)
+*.nupkg
+*.snupkg
+
+# === Test & coverage artifacts ===
+TestResults/
+*.trx
+*.coverage
+*.coveragejson
+coverage*.xml
+coverage*.json
+
+# === MonoGame Content Pipeline (generated) ===
+**/Content/**/bin/
+**/Content/**/obj/
+*.xnb
+*.mgcontent
+*.mgstats
+
+# === Misc build artifacts that sometimes escape bin/obj ===
+*.pdb
+*.cache

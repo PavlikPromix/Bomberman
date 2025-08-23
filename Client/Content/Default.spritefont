@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<XnaContent xmlns:ns="Microsoft.Xna.Framework.Content.Pipeline.Graphics">
+  <Asset Type="ns:FontDescription">
+    <FontName>DejaVu Sans</FontName>
+    <Size>18</Size>
+    <Spacing>1</Spacing>
+    <UseKerning>true</UseKerning>
+    <Style>Regular</Style>
+    <CharacterRegions>
+      <!-- ASCII -->
+      <CharacterRegion><Start> </Start><End>~</End></CharacterRegion>
+      <!-- En dash U+2013 and Em dash U+2014 -->
+      <CharacterRegion><Start>&#8211;</Start><End>&#8212;</End></CharacterRegion>
+    </CharacterRegions>
+  </Asset>
+</XnaContent>
