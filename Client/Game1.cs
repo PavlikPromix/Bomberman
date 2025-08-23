@@ -16,6 +16,7 @@ public class Game1 : Game
     public string WsUrl = "ws://localhost:5202/api/game/state";
     public GameSocket? Socket;
     public ScreenManager Screens = new();
+    public LobbyScreen LobbyScreenRef = null!;
 
     public Game1()
     {
@@ -28,7 +29,6 @@ public class Game1 : Game
 
     protected override void Initialize()
     {
-        // Enable proper text input for TextBox
         Window.TextInput += (_, e) => Screens.TextInput(e.Character);
         base.Initialize();
     }
@@ -38,14 +38,13 @@ public class Game1 : Game
         _sb = new SpriteBatch(GraphicsDevice);
         Ui.Pixel = new Texture2D(GraphicsDevice, 1, 1);
         Ui.Pixel.SetData(new[] { Color.White });
-
-        // Load font built from Content.mgcb (Default.spritefont)
         Ui.Font = Content.Load<SpriteFont>("Default");
 
-        // Register screens
         Screens.Add("login", new LoginScreen(this));
         Screens.Add("menu", new MenuScreen(this));
         Screens.Add("leaderboard", new LeaderboardScreen(this));
+        LobbyScreenRef = new LobbyScreen(this);
+        Screens.Add("lobby", LobbyScreenRef);
         Screens.Add("ws", new WsScreen(this));
         Screens.Show("login");
     }
@@ -56,7 +55,6 @@ public class Game1 : Game
         {
             _g.IsFullScreen = !_g.IsFullScreen; _g.ApplyChanges();
         }
-
         Screens.Update(gameTime);
         base.Update(gameTime);
     }

@@ -45,6 +45,17 @@ public class ApiClient
         }
         return (await res.Content.ReadFromJsonAsync<Lobby>())!;
     }
+
+    public async Task<Lobby> GetLobbyAsync(string lobbyIdOrCode)
+        => (await _http.GetFromJsonAsync<Lobby>($"/api/lobbies/{lobbyIdOrCode}"))!;
+
+    public async Task<string> GetLobbyCodeAsync(string lobbyId)
+    {
+        var obj = await _http.GetFromJsonAsync<CodeDto>($"/api/lobbies/{lobbyId}/code");
+        return obj!.Code;
+    }
+
+    private class CodeDto { public string Code { get; set; } = ""; }
 }
 
 // Contracts mirror server shapes

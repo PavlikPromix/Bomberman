@@ -31,7 +31,7 @@ namespace Bomberman.Client.Screens
     public class LoginScreen : IScreen
     {
         readonly Game1 _game;
-        readonly Label title = new(){ Text="Bomberman – Login" };
+        readonly Label title = new(){ Text="Bomberman - Login" };
         readonly Label err = new(){ Text="" , Color=new Color(255,140,140)};
         readonly TextBox user = new(){ Placeholder="username" };
         readonly TextBox pass = new(){ Placeholder="password" };
@@ -82,7 +82,7 @@ namespace Bomberman.Client.Screens
         readonly Label hello = new();
         readonly Button leaderboard = new(){ Text="Leaderboard" };
         readonly Button createLobby = new(){ Text="Create Lobby (2)" };
-        readonly TextBox lobbyId = new(){ Placeholder="Lobby ID to join" };
+        readonly TextBox lobbyId = new(){ Placeholder="Lobby ID or Code" };
         readonly Button joinLobby = new(){ Text="Join Lobby" };
         readonly Button ws = new(){ Text="WebSocket Tester" };
         readonly Button quit = new(){ Text="Quit" };
@@ -94,12 +94,18 @@ namespace Bomberman.Client.Screens
             leaderboard.OnClick = () => _game.Screens.Show("leaderboard");
             createLobby.OnClick = async () => {
                 var lobby = await _game.Api.CreateLobbyAsync(2);
-                info = $"Created lobby: {lobby.LobbyId}";
+                // Auto-join and switch to lobby screen
+                var joined = await _game.Api.JoinLobbyAsync(lobby.LobbyId);
+                var code = await _game.Api.GetLobbyCodeAsync(joined.LobbyId);
+                _game.LobbyScreenRef.SetLobby(joined, code);
+                _game.Screens.Show("lobby");
             };
             joinLobby.OnClick = async () => {
                 try {
-                    var l = await _game.Api.JoinLobbyAsync(lobbyId.Text);
-                    info = $"Joined {l.LobbyId}; status: {l.Status}; players: {l.Players.Count}";
+                    var l = await _game.Api.JoinLobbyAsync(lobbyId.Text.Trim());
+                    var code = await _game.Api.GetLobbyCodeAsync(l.LobbyId);
+                    _game.LobbyScreenRef.SetLobby(l, code);
+                    _game.Screens.Show("lobby");
                 } catch(Exception ex) { info = ex.Message; }
             };
             ws.OnClick = () => _game.Screens.Show("ws");
@@ -174,11 +180,77 @@ namespace Bomberman.Client.Screens
             for (int i=0;i<users.Count;i++)
             {
                 var u = users[i];
-                sb.DrawString(Ui.Font, $"{(i+1)+(page-1)*10}. {u.Username}  —  score {u.Stats.TotalScore}", new Vector2(120,y), Color.White);
+                sb.DrawString(Ui.Font, $"{(i+1)+(page-1)*10}. {u.Username}  -  score {u.Stats.TotalScore}", new Vector2(120,y), Color.White);
                 y += Ui.Font.LineSpacing + 6;
             }
             sb.DrawString(Ui.Font, $"Page {page}/{totalPages}", new Vector2(120, 370), new Color(200,220,255));
             back.Draw(sb); prev.Draw(sb); next.Draw(sb);
+        }
+        public void TextInput(char c) { }
+    }
+
+    // ---------- In-Lobby screen ----------
+    public class LobbyScreen : IScreen
+    {
+        readonly Game1 _game;
+        readonly Button back = new(){ Text="Leave Lobby" };
+        Lobby? _lobby;
+        string _code = "";
+        double _poll;
+
+        public LobbyScreen(Game1 g)
+        {
+            _game = g;
+            back.OnClick = () => { _game.Screens.Show("menu"); };
+        }
+        public void SetLobby(Lobby lobby, string code) { _lobby = lobby; _code = code; }
+        public void OnEnter() { _poll = 0; }
+        public async void Update(GameTime t)
+        {
+            var m = Mouse.GetState(); var k = Keyboard.GetState();
+            back.Bounds = new Rectangle(30,30,140,40);
+            back.Update(t,m,k);
+            if (k.IsKeyDown(Keys.Escape)) _game.Screens.Show("menu");
+            // poll lobby state every 2s
+            _poll += t.ElapsedGameTime.TotalSeconds;
+            if (_poll >= 2.0 && _lobby != null)
+            {
+                _poll = 0;
+                try { _lobby = await _game.Api.GetLobbyAsync(_lobby.LobbyId); } catch { /* ignore transient */ }
+            }
+        }
+        public void Draw(SpriteBatch sb)
+        {
+            if (_lobby == null)
+            {
+                sb.DrawString(Ui.Font, "No lobby.", new Vector2(120, 120), Color.White);
+                back.Draw(sb);
+                return;
+            }
+            // Big, shareable code box
+            var header = "Lobby Code";
+            sb.DrawString(Ui.Font, header, new Vector2(120, 60), new Color(200,220,255));
+            var box = new Rectangle(120, 90, 300, 80);
+            sb.DrawRect(box, new Color(35,45,70));
+            sb.DrawFrame(box, new Color(20,25,35), 3);
+            // scale the code
+            var measure = Ui.Font.MeasureString(_code);
+            var scale = Math.Min( (box.Width-20) / Math.Max(1f, measure.X), (box.Height-20) / Math.Max(1f, measure.Y) );
+            sb.DrawString(Ui.Font, _code, new Vector2(box.X + 10, box.Y + 10), Color.White, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+
+            // Details and players
+            sb.DrawString(Ui.Font, $"Lobby: {_lobby.LobbyId}", new Vector2(120, 190), new Color(180,200,240));
+            sb.DrawString(Ui.Font, $"Status: {_lobby.Status}", new Vector2(120, 220), new Color(180,200,240));
+            sb.DrawString(Ui.Font, "Players:", new Vector2(120, 260), Color.White);
+            int y = 290;
+            for (int i=0;i<_lobby.Players.Count;i++)
+            {
+                var u = _lobby.Players[i];
+                sb.DrawString(Ui.Font, $"{i+1}. {u.Username}", new Vector2(140, y), Color.White);
+                y += Ui.Font.LineSpacing + 4;
+            }
+
+            back.Draw(sb);
         }
         public void TextInput(char c) { }
     }
