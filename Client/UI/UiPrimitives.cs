@@ -2,7 +2,6 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using System;
-using System.Collections.Generic;
 
 namespace Bomberman.Client.UI
 {
@@ -14,10 +13,7 @@ namespace Bomberman.Client.UI
         public static Rectangle Pad(this Rectangle r, int p) =>
             new Rectangle(r.X + p, r.Y + p, r.Width - p*2, r.Height - p*2);
 
-        public static void DrawRect(this SpriteBatch sb, Rectangle r, Color c)
-        {
-            sb.Draw(Pixel, r, c);
-        }
+        public static void DrawRect(this SpriteBatch sb, Rectangle r, Color c) => sb.Draw(Pixel, r, c);
 
         public static void DrawFrame(this SpriteBatch sb, Rectangle r, Color c, int thickness = 2)
         {
@@ -78,26 +74,60 @@ namespace Bomberman.Client.UI
         public string Text = "";
         public string Placeholder = "";
         public bool Focused;
-        double caret;
+
+        // Proper backspace handling (edge + repeat)
+        bool _backHeld;
+        double _backTimer;
+        const double InitialDelay = 0.35; // seconds before repeat starts
+        const double RepeatRate   = 0.05; // seconds between repeats
+
+        double caretBlink;
+
         public override void Update(GameTime t, MouseState m, KeyboardState k)
         {
             if (!Visible) return;
+
+            // Focus on click
             if (m.LeftButton == ButtonState.Pressed)
                 Focused = Contains(m.Position);
-            if (Focused && k.IsKeyDown(Keys.Back))
+
+            // Backspace edge + repeat timing
+            var backDown = Focused && k.IsKeyDown(Keys.Back);
+            if (backDown && !_backHeld)
             {
-                // naive repeat: one backspace per frame while held is fine for now
-                if (Text.Length > 0) Text = Text.Substring(0, Text.Length - 1);
+                DeleteOne();
+                _backTimer = InitialDelay;
             }
-            caret += t.ElapsedGameTime.TotalSeconds;
+            else if (backDown && _backHeld)
+            {
+                _backTimer -= t.ElapsedGameTime.TotalSeconds;
+                if (_backTimer <= 0)
+                {
+                    DeleteOne();
+                    _backTimer = RepeatRate;
+                }
+            }
+            else if (!backDown && _backHeld)
+            {
+                _backTimer = 0;
+            }
+            _backHeld = backDown;
+
+            caretBlink += t.ElapsedGameTime.TotalSeconds;
         }
+
+        private void DeleteOne()
+        {
+            if (Text.Length > 0) Text = Text.Substring(0, Text.Length - 1);
+        }
+
         public override void TextInput(char c)
         {
             if (!Focused) return;
-            if (c == '\r' || c == '\n') return;
-            if (c == '\b') return;
+            if (c == '\r' || c == '\n' || c == '\b') return; // ignore enter/backspace from TextInput
             if (!char.IsControl(c)) Text += c;
         }
+
         public override void Draw(SpriteBatch sb)
         {
             if (!Visible) return;
@@ -107,7 +137,8 @@ namespace Bomberman.Client.UI
             var color = Text.Length > 0 ? Color.White : new Color(170,170,170);
             var pos = new Vector2(Bounds.X + 8, Bounds.Y + 6);
             sb.DrawString(Ui.Font, drawText, pos, color);
-            if (Focused && ((int)(caret*2)%2)==0)
+
+            if (Focused && ((int)(caretBlink*2)%2)==0)
             {
                 var size = Ui.Font.MeasureString(Text);
                 var x = (int)(pos.X + size.X + 2);
