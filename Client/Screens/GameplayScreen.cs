@@ -4,6 +4,7 @@ using Microsoft.Xna.Framework.Input;
 using Bomberman.Client.Net;
 using Bomberman.Client.UI;
 using System;
+using System.Linq;
 
 namespace Bomberman.Client.Screens
 {
@@ -17,23 +18,18 @@ namespace Bomberman.Client.Screens
         GameState? _state;
 
         const int Cell = 24;     // 25*24 = 600px tall
-        const int OriginX = 100; // grid left
-        const int OriginY = 0;   // grid top
+        const int OriginX = 180; // centered in 960x720 with sidebar
+        const int OriginY = 40;  // leave space for HUD
 
         bool _up,_down,_left,_right,_space;
 
         public GameplayScreen(Game1 g) { _game = g; back.OnClick = () => _game.Screens.Show("menu"); }
-
         public void SetGame(string lobbyId, string gameId, GameState? initial = null)
         { LobbyId = lobbyId; GameId = gameId; _state = initial; }
 
         public async void OnEnter()
         {
-            try
-            {
-                var latest = await _game.Api.GetActiveGameByLobbyAsync(LobbyId);
-                if (IsValid(latest)) _state = latest;
-            } catch { }
+            try { var latest = await _game.Api.GetActiveGameByLobbyAsync(LobbyId); if (IsValid(latest)) _state = latest; } catch { }
 
             if (_game.Socket == null)
             {
@@ -41,10 +37,20 @@ namespace Bomberman.Client.Screens
                 await _game.Socket.ConnectAsync(new Uri(_game.WsUrl));
             }
             _game.Socket.StartListening(
-                onState: (s) => { if (IsValid(s)) _state = s; },
+                onState: (s) => {
+                    if (IsValid(s)) {
+                        _state = s;
+                        if (!_state.Active && !string.IsNullOrEmpty(_state.WinnerId))
+                        {
+                            var winnerName = _state.Players.FirstOrDefault(p => p.Id == _state.WinnerId)?.Username ?? "Unknown";
+                            _game.FinalRef.SetResult(winnerName);
+                            _game.Screens.Show("final");
+                        }
+                    }
+                },
                 onError: (e) => { /* optionally surface */ }
             );
-            await _game.Socket.SendMoveAsync(GameId, _game.Api.Me!.Id, "noop"); // register & get echo state
+            await _game.Socket.SendMoveAsync(GameId, _game.Api.Me!.Id, "noop");
         }
 
         bool IsValid(GameState? s) =>
@@ -53,8 +59,10 @@ namespace Bomberman.Client.Screens
         public async void Update(GameTime t)
         {
             var m = Mouse.GetState(); var k = Keyboard.GetState();
-            back.Bounds = new Rectangle(20, 20, 100, 36);
+            back.Bounds = new Rectangle(20, 20, 120, 40);
             back.Update(t,m,k);
+
+            if (!IsValid(_state)) return;
 
             bool dUp = k.IsKeyDown(Keys.Up) || k.IsKeyDown(Keys.W);
             bool dDown = k.IsKeyDown(Keys.Down) || k.IsKeyDown(Keys.S);
@@ -76,22 +84,22 @@ namespace Bomberman.Client.Screens
 
         public void Draw(SpriteBatch sb)
         {
-            sb.DrawString(Ui.Font, "Gameplay", new Vector2(140, 8), Color.White);
+            // HUD
             back.Draw(sb);
+            DrawScoreHud(sb);
 
-            // Use 25x25 fallback if state is missing/empty
             int rows = 25, cols = 25;
             if (IsValid(_state)) { rows = _state!.Board.Length; cols = _state!.Board[0].Length; }
 
-            // grid
+            // Grid (subtle)
             for (int y=0;y<=rows;y++)
-                sb.DrawRect(new Rectangle(OriginX, OriginY + y*Cell, cols*Cell, 1), new Color(35,45,75));
+                sb.DrawRect(new Rectangle(OriginX, OriginY + y*Cell, cols*Cell, 1), new Color(45,45,45));
             for (int x=0;x<=cols;x++)
-                sb.DrawRect(new Rectangle(OriginX + x*Cell, OriginY, 1, rows*Cell), new Color(35,45,75));
+                sb.DrawRect(new Rectangle(OriginX + x*Cell, OriginY, 1, rows*Cell), new Color(45,45,45));
 
             if (!IsValid(_state)) return;
 
-            // board
+            // Board contents
             for (int y=0;y<rows;y++)
             {
                 var row = _state!.Board[y];
@@ -100,18 +108,33 @@ namespace Bomberman.Client.Screens
                     int v = row[x];
                     var r = new Rectangle(OriginX + x*Cell, OriginY + y*Cell, Cell, Cell);
 
-                    if (v == 1) sb.DrawRect(r, new Color(10,15,25));               // solid wall
-                    else if (v == 2) sb.DrawRect(r.Pad(3), new Color(240,210,120)); // crate
-                    else if (v == 20) DrawCircle(sb, r.Center, Cell/3, new Color(240,240,250)); // bomb
+                    if (v == 1) sb.DrawRect(r, new Color(20,20,20));                // solid
+                    else if (v == 2) sb.DrawRect(r.Pad(3), new Color(200,170,80));  // crate
+                    else if (v == 20) DrawCircle(sb, r.Center, Cell/3, new Color(230,230,240)); // bomb
                     else if (v == 30) sb.DrawRect(r.Pad(2), new Color(255,120,60)); // flame
-                    else if (v >= 11 && v < 20) DrawTriangle(sb, r, v);            // player
+                    else if (v >= 11 && v < 20) DrawTriangle(sb, r, v);             // player
                 }
             }
+        }
 
-            // debug text inside the window
-            int a = _state!.Board[1][1];
-            int b = _state!.Board[rows-2][cols-2];
-            sb.DrawString(Ui.Font, $"b[1,1]={a}  b[end,end]={b}", new Vector2(OriginX + 4, OriginY + rows*Cell - 18), new Color(200, 240, 255));
+        void DrawScoreHud(SpriteBatch sb)
+        {
+            string left = "Waiting...";
+            string right = "";
+            string toN = "";
+            if (IsValid(_state))
+            {
+                var p1 = _state!.Players.Count > 0 ? _state.Players[0] : null;
+                var p2 = _state!.Players.Count > 1 ? _state.Players[1] : null;
+                int s1 = (p1 != null && _state.Scores.TryGetValue(p1.Id, out var a)) ? a : 0;
+                int s2 = (p2 != null && _state.Scores.TryGetValue(p2.Id, out var b)) ? b : 0;
+                left = p1 != null ? $"{p1.Username}: {s1}" : "";
+                right = p2 != null ? $"{p2.Username}: {s2}" : "";
+                toN = $"(to {_state.RoundsToWin})";
+            }
+            sb.DrawString(Ui.Font, left, new Vector2(OriginX, 10), Color.White);
+            sb.DrawString(Ui.Font, right, new Vector2(OriginX + 25*Cell - 160, 10), Color.White);
+            sb.DrawString(Ui.Font, toN, new Vector2(OriginX + 25*Cell/2 - 40, 10), new Color(180,180,180));
         }
 
         public void TextInput(char c) { }
@@ -121,7 +144,7 @@ namespace Bomberman.Client.Screens
             var p1 = new Vector2(r.X + r.Width/2f, r.Y + 3);
             var p2 = new Vector2(r.X + 3, r.Bottom - 3);
             var p3 = new Vector2(r.Right - 3, r.Bottom - 3);
-            var col = (code==11) ? new Color(120,220,255) : new Color(255,200,120);
+            var col = (code==11) ? new Color(100,200,255) : new Color(255,200,100);
             FillTri(sb, p1,p2,p3, col);
         }
 

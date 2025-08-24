@@ -1,8 +1,8 @@
-using System;
-using System.Collections.Generic;
-using System.Net.Http;
-using System.Net.Http.Json;
-using System.Threading.Tasks;
+using System;                         // Uri
+using System.Collections.Generic;     // List<>, Dictionary<>
+using System.Net.Http;                // HttpClient
+using System.Net.Http.Json;           // PostAsJsonAsync, ReadFromJsonAsync
+using System.Threading.Tasks;         // Task
 
 namespace Bomberman.Client.Net;
 
@@ -55,6 +55,20 @@ public class ApiClient
         return obj!.Code;
     }
 
+    public async Task<LobbySettings> GetLobbySettingsAsync(string lobbyId)
+        => (await _http.GetFromJsonAsync<LobbySettings>($"/api/lobbies/{lobbyId}/settings"))!;
+
+    public async Task<LobbySettings> SetLobbySettingsAsync(string lobbyId, int roundsToWin, int bombLimit)
+    {
+        var res = await _http.PostAsJsonAsync("/api/lobbies/settings", new { lobbyId, token = Token, roundsToWin, bombLimit });
+        if (!res.IsSuccessStatusCode)
+        {
+            var err = await res.Content.ReadFromJsonAsync<ErrorResponse>();
+            throw new Exception($"{err?.ErrorCode}: {err?.ErrorMessage}");
+        }
+        return (await res.Content.ReadFromJsonAsync<LobbySettings>())!;
+    }
+
     public async Task<GameState> StartLobbyAsync(string lobbyId)
     {
         var res = await _http.PostAsJsonAsync("/api/lobbies/start", new { lobbyId, token = Token });
@@ -72,11 +86,24 @@ public class ApiClient
     private class CodeDto { public string Code { get; set; } = ""; }
 }
 
-// Contracts mirror server shapes
+// Contracts
 public class User { public string Id { get; set; } = ""; public string Username { get; set; } = ""; public UserStats Stats { get; set; } = new(); }
 public class UserStats { public int GamesPlayed { get; set; } public int GamesWon { get; set; } public int TotalScore { get; set; } }
 public class Lobby { public string LobbyId { get; set; } = ""; public List<User> Players { get; set; } = new(); public string Status { get; set; } = "waiting"; }
-public class GameState { public string GameId { get; set; } = ""; public string LobbyId { get; set; } = ""; public List<User> Players { get; set; } = new(); public int[][] Board { get; set; } = Array.Empty<int[]>(); public bool Active { get; set; } }
+public class LobbySettings { public int RoundsToWin { get; set; } = 5; public int BombLimit { get; set; } = 3; }
+
+public class GameState
+{
+    public string GameId { get; set; } = "";
+    public string LobbyId { get; set; } = "";
+    public List<User> Players { get; set; } = new();
+    public int[][] Board { get; set; } = Array.Empty<int[]>();
+    public bool Active { get; set; }
+    public Dictionary<string,int> Scores { get; set; } = new();
+    public int RoundsToWin { get; set; } = 5;
+    public string? WinnerId { get; set; }
+}
+
 public class ErrorResponse { public string ErrorCode { get; set; } = ""; public string ErrorMessage { get; set; } = ""; }
 public class LoginResponse { public string Token { get; set; } = ""; public User User { get; set; } = new(); }
 public class LeaderboardResponse { public List<User> Users { get; set; } = new(); public int Page { get; set; } public int TotalPages { get; set; } }

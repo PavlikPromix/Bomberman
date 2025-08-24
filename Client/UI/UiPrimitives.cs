@@ -61,8 +61,8 @@ namespace Bomberman.Client.UI
         {
             if (!Visible) return;
             var over = Contains(Mouse.GetState().Position);
-            sb.DrawRect(Bounds, over ? new Color(70,90,120) : new Color(55,70,100));
-            sb.DrawFrame(Bounds, new Color(20,25,35));
+            sb.DrawRect(Bounds, over ? new Color(60,60,60) : new Color(40,40,40));
+            sb.DrawFrame(Bounds, new Color(70,70,70));
             var size = Ui.Font.MeasureString(Text);
             var pos = new Vector2(Bounds.X + (Bounds.Width - size.X)/2, Bounds.Y + (Bounds.Height - size.Y)/2);
             sb.DrawString(Ui.Font, Text, pos, Color.White);
@@ -131,8 +131,8 @@ namespace Bomberman.Client.UI
         public override void Draw(SpriteBatch sb)
         {
             if (!Visible) return;
-            sb.DrawRect(Bounds, new Color(35,45,70));
-            sb.DrawFrame(Bounds, new Color(20,25,35));
+            sb.DrawRect(Bounds, new Color(30,30,30));
+            sb.DrawFrame(Bounds, new Color(70,70,70));
             var drawText = Text.Length > 0 ? Text : Placeholder;
             var color = Text.Length > 0 ? Color.White : new Color(170,170,170);
             var pos = new Vector2(Bounds.X + 8, Bounds.Y + 6);

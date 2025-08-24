@@ -32,7 +32,7 @@ namespace Bomberman.Client.Screens
     {
         readonly Game1 _game;
         readonly Label title = new(){ Text="Bomberman - Login" };
-        readonly Label err = new(){ Text="" , Color=new Color(255,140,140)};
+        readonly Label err = new(){ Text="" , Color=new Color(255,120,120)};
         readonly TextBox user = new(){ Placeholder="username" };
         readonly TextBox pass = new(){ Placeholder="password" };
         readonly Button loginBtn = new(){ Text="Login" };
@@ -55,12 +55,12 @@ namespace Bomberman.Client.Screens
         public void Update(GameTime t)
         {
             var m = Mouse.GetState(); var k = Keyboard.GetState();
-            var layout = new Layout(new Rectangle(120,100, 400, 40));
-            title.Bounds = new Rectangle(120, 40, 500, 40);
-            user.Bounds = layout.Next(40);
-            pass.Bounds = layout.Next(40);
-            loginBtn.Bounds = layout.Next(44);
-            err.Bounds = layout.Next(40);
+            var layout = new Layout(new Rectangle(140,120, 460, 44), 14);
+            title.Bounds = new Rectangle(140, 60, 500, 44);
+            user.Bounds = layout.Next(44);
+            pass.Bounds = layout.Next(44);
+            loginBtn.Bounds = layout.Next(48);
+            err.Bounds = layout.Next(44);
 
             user.Update(t,m,k); pass.Update(t,m,k); loginBtn.Update(t,m,k);
             if (k.IsKeyDown(Keys.Tab)) { user.Focused = !user.Focused; pass.Focused = !user.Focused; }
@@ -84,7 +84,6 @@ namespace Bomberman.Client.Screens
         readonly Button createLobby = new(){ Text="Create Lobby (2)" };
         readonly TextBox lobbyId = new(){ Placeholder="Lobby ID or Code" };
         readonly Button joinLobby = new(){ Text="Join Lobby" };
-        readonly Button ws = new(){ Text="WebSocket Tester" };
         readonly Button quit = new(){ Text="Quit" };
         string info = "";
 
@@ -107,7 +106,6 @@ namespace Bomberman.Client.Screens
                     _game.Screens.Show("lobby");
                 } catch(Exception ex) { info = ex.Message; }
             };
-            ws.OnClick = () => _game.Screens.Show("ws");
             quit.OnClick = () => _game.Exit();
         }
         public void OnEnter() { }
@@ -115,25 +113,24 @@ namespace Bomberman.Client.Screens
         {
             var m = Mouse.GetState(); var k = Keyboard.GetState();
             hello.Text = _game.Api.Me != null ? $"Hello, {_game.Api.Me.Username} ({_game.Api.Me.Id})" : "Hello";
-            var layout = new Layout(new Rectangle(120,90, 420, 44));
-            hello.Bounds = new Rectangle(120, 40, 700, 40);
-            leaderboard.Bounds = layout.Next(44);
-            createLobby.Bounds = layout.Next(44);
-            lobbyId.Bounds = layout.Next(40);
-            joinLobby.Bounds = layout.Next(44);
-            ws.Bounds = layout.Next(44);
-            quit.Bounds = layout.Next(44);
+            var layout = new Layout(new Rectangle(140,120, 460, 48), 14);
+            hello.Bounds = new Rectangle(140, 70, 700, 44);
+            leaderboard.Bounds = layout.Next(48);
+            createLobby.Bounds = layout.Next(48);
+            lobbyId.Bounds = layout.Next(44);
+            joinLobby.Bounds = layout.Next(48);
+            quit.Bounds = layout.Next(48);
 
             lobbyId.Update(t,m,k);
-            leaderboard.Update(t,m,k); createLobby.Update(t,m,k); joinLobby.Update(t,m,k); ws.Update(t,m,k); quit.Update(t,m,k);
+            leaderboard.Update(t,m,k); createLobby.Update(t,m,k); joinLobby.Update(t,m,k); quit.Update(t,m,k);
             if (k.IsKeyDown(Keys.Escape)) _game.Exit();
         }
         public void Draw(SpriteBatch sb)
         {
             sb.DrawString(Ui.Font, hello.Text, new Vector2(hello.Bounds.X, hello.Bounds.Y), Color.White);
-            leaderboard.Draw(sb); createLobby.Draw(sb); lobbyId.Draw(sb); joinLobby.Draw(sb); ws.Draw(sb); quit.Draw(sb);
+            leaderboard.Draw(sb); createLobby.Draw(sb); lobbyId.Draw(sb); joinLobby.Draw(sb); quit.Draw(sb);
             if (!string.IsNullOrEmpty(info))
-                sb.DrawString(Ui.Font, info, new Vector2(120, 420), new Color(200,220,255));
+                sb.DrawString(Ui.Font, info, new Vector2(140, 520), new Color(200,220,255));
         }
         public void TextInput(char c) { lobbyId.TextInput(c); }
     }
@@ -167,33 +164,36 @@ namespace Bomberman.Client.Screens
         {
             var m = Mouse.GetState(); var k = Keyboard.GetState();
             back.Bounds = new Rectangle(30,30,100,40);
-            prev.Bounds = new Rectangle(120,400,100,40);
-            next.Bounds = new Rectangle(230,400,100,40);
+            prev.Bounds = new Rectangle(140,560,100,40);
+            next.Bounds = new Rectangle(260,560,100,40);
             back.Update(t,m,k); prev.Update(t,m,k); next.Update(t,m,k);
             if (k.IsKeyDown(Keys.Escape)) _game.Screens.Show("menu");
         }
         public void Draw(SpriteBatch sb)
         {
-            sb.DrawString(Ui.Font, "Leaderboard", new Vector2(150, 40), Color.White);
-            int y = 100;
+            sb.DrawString(Ui.Font, "Leaderboard", new Vector2(160, 60), Color.White);
+            int y = 120;
             for (int i=0;i<users.Count;i++)
             {
                 var u = users[i];
-                sb.DrawString(Ui.Font, $"{(i+1)+(page-1)*10}. {u.Username}  -  score {u.Stats.TotalScore}", new Vector2(120,y), Color.White);
-                y += Ui.Font.LineSpacing + 6;
+                sb.DrawString(Ui.Font, $"{(i+1)+(page-1)*10}. {u.Username}  -  score {u.Stats.TotalScore}", new Vector2(140,y), Color.White);
+                y += Ui.Font.LineSpacing + 8;
             }
-            sb.DrawString(Ui.Font, $"Page {page}/{totalPages}", new Vector2(120, 370), new Color(200,220,255));
+            sb.DrawString(Ui.Font, $"Page {page}/{totalPages}", new Vector2(140, 520), new Color(200,220,255));
             back.Draw(sb); prev.Draw(sb); next.Draw(sb);
         }
         public void TextInput(char c) { }
     }
 
-    // ---------- In-Lobby screen (with Start & auto-transition to gameplay) ----------
+    // ---------- In-Lobby (leader can set rounds/bomb limit) ----------
     public class LobbyScreen : IScreen
     {
         readonly Game1 _game;
         readonly Button back = new(){ Text="Leave Lobby" };
         readonly Button start = new(){ Text="Start (Leader)" };
+        readonly Label settingsTitle = new(){ Text="Settings (leader only)" , Color=new Color(200,220,255)};
+        readonly TextBox rounds = new(){ Placeholder="Rounds to win (default 5)" };
+        readonly TextBox limit = new(){ Placeholder="Bomb limit (default 3)" };
         Lobby? _lobby;
         string _code = "";
         double _poll;
@@ -208,6 +208,13 @@ namespace Bomberman.Client.Screens
                 if (_lobby == null) return;
                 try
                 {
+                    // Leader may have typed settings
+                    if (_game.Api.Me != null && _lobby.Players.Count>0 && _lobby.Players[0].Id == _game.Api.Me.Id)
+                    {
+                        int r = ParseOr(rounds.Text, 5);
+                        int b = ParseOr(limit.Text, 3);
+                        await _game.Api.SetLobbySettingsAsync(_lobby.LobbyId, r, b);
+                    }
                     var gs = await _game.Api.StartLobbyAsync(_lobby.LobbyId);
                     _info = $"Started game: {gs.GameId}";
                     _lobby.Status = "in-progress";
@@ -217,13 +224,15 @@ namespace Bomberman.Client.Screens
                 catch (Exception ex) { _info = ex.Message; }
             };
         }
+        int ParseOr(string s, int d){ if(int.TryParse(s, out var v)) return v; return d; }
+
         public void SetLobby(Lobby lobby, string code) { _lobby = lobby; _code = code; _info = ""; }
         public void OnEnter() { _poll = 0; }
         public async void Update(GameTime t)
         {
             var m = Mouse.GetState(); var k = Keyboard.GetState();
             back.Bounds = new Rectangle(30,30,140,40);
-            start.Bounds = new Rectangle(430, 90, 180, 44);
+            start.Bounds = new Rectangle(680, 110, 200, 48);
             back.Update(t,m,k);
 
             // Poll lobby state every 0.5s
@@ -234,7 +243,6 @@ namespace Bomberman.Client.Screens
                 try
                 {
                     _lobby = await _game.Api.GetLobbyAsync(_lobby.LobbyId);
-                    // if game started (guest path), hop into gameplay
                     if (!string.Equals(_lobby.Status, "waiting", StringComparison.OrdinalIgnoreCase))
                     {
                         var gs = await _game.Api.GetActiveGameByLobbyAsync(_lobby.LobbyId);
@@ -242,18 +250,26 @@ namespace Bomberman.Client.Screens
                         _game.Screens.Show("gameplay");
                         return;
                     }
-                } catch { /* ignore transient */ }
+                } catch { }
             }
 
-            // Leader-only visibility & requires >=2 players
-            if (_lobby != null && _game.Api.Me != null && _lobby.Players.Count >= 2 &&
-                string.Equals(_lobby.Status, "waiting", StringComparison.OrdinalIgnoreCase) &&
-                _lobby.Players.Count > 0 && _lobby.Players[0].Id == _game.Api.Me.Id)
+            bool isLeader = _lobby != null && _game.Api.Me != null && _lobby.Players.Count > 0 && _lobby.Players[0].Id == _game.Api.Me.Id;
+            start.Visible = isLeader && _lobby != null && _lobby.Players.Count >= 2 && string.Equals(_lobby.Status, "waiting", StringComparison.OrdinalIgnoreCase);
+            if (start.Visible) start.Update(t,m,k);
+
+            // layout for settings area
+            settingsTitle.Visible = isLeader;
+            rounds.Visible = isLeader;
+            limit.Visible = isLeader;
+
+            if (isLeader && _lobby != null)
             {
-                start.Visible = true;
-                start.Update(t,m,k);
+                var layout = new Layout(new Rectangle(680, 160, 220, 44), 12);
+                settingsTitle.Bounds = new Rectangle(680, 80, 260, 30);
+                rounds.Bounds = layout.Next(44);
+                limit.Bounds = layout.Next(44);
+                rounds.Update(t,m,k); limit.Update(t,m,k);
             }
-            else start.Visible = false;
 
             if (k.IsKeyDown(Keys.Escape)) _game.Screens.Show("menu");
         }
@@ -261,99 +277,36 @@ namespace Bomberman.Client.Screens
         {
             if (_lobby == null)
             {
-                sb.DrawString(Ui.Font, "No lobby.", new Vector2(120, 120), Color.White);
+                sb.DrawString(Ui.Font, "No lobby.", new Vector2(160, 140), Color.White);
                 back.Draw(sb);
                 return;
             }
             var header = "Lobby Code";
-            sb.DrawString(Ui.Font, header, new Vector2(120, 60), new Color(200,220,255));
-            var box = new Rectangle(120, 90, 300, 80);
-            sb.DrawRect(box, new Color(35,45,70));
-            sb.DrawFrame(box, new Color(20,25,35), 3);
+            sb.DrawString(Ui.Font, header, new Vector2(160, 90), new Color(200,220,255));
+            var box = new Rectangle(160, 120, 320, 84);
+            sb.DrawRect(box, new Color(25,25,25));
+            sb.DrawFrame(box, new Color(70,70,70), 3);
             var measure = Ui.Font.MeasureString(_code);
             var scale = Math.Min( (box.Width-20) / Math.Max(1f, measure.X), (box.Height-20) / Math.Max(1f, measure.Y) );
             sb.DrawString(Ui.Font, _code, new Vector2(box.X + 10, box.Y + 10), Color.White, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
 
-            sb.DrawString(Ui.Font, $"Lobby: {_lobby.LobbyId}", new Vector2(120, 190), new Color(180,200,240));
-            sb.DrawString(Ui.Font, $"Status: {_lobby.Status}", new Vector2(120, 220), new Color(180,200,240));
-            sb.DrawString(Ui.Font, "Players:", new Vector2(120, 260), Color.White);
-            int y = 290;
+            sb.DrawString(Ui.Font, $"Lobby: {_lobby.LobbyId}", new Vector2(160, 230), new Color(180,200,240));
+            sb.DrawString(Ui.Font, $"Status: {_lobby.Status}", new Vector2(160, 260), new Color(180,200,240));
+            sb.DrawString(Ui.Font, "Players:", new Vector2(160, 300), Color.White);
+            int y = 330;
             for (int i=0;i<_lobby.Players.Count;i++)
             {
                 var u = _lobby.Players[i];
-                sb.DrawString(Ui.Font, $"{i+1}. {u.Username}", new Vector2(140, y), Color.White);
-                y += Ui.Font.LineSpacing + 4;
+                sb.DrawString(Ui.Font, $"{i+1}. {u.Username}", new Vector2(180, y), Color.White);
+                y += Ui.Font.LineSpacing + 6;
             }
             if (!string.IsNullOrEmpty(_info))
-                sb.DrawString(Ui.Font, _info, new Vector2(120, y + 20), new Color(200,220,255));
+                sb.DrawString(Ui.Font, _info, new Vector2(160, y + 20), new Color(200,220,255));
 
+            settingsTitle.Draw(sb); rounds.Draw(sb); limit.Draw(sb);
             start.Draw(sb);
             back.Draw(sb);
         }
-        public void TextInput(char c) { }
-    }
-
-    // ---------- WebSocket tester ----------
-    public class WsScreen : IScreen
-    {
-        readonly Game1 _game;
-        readonly TextBox gameId = new(){ Placeholder="gameId" };
-        readonly TextBox move = new(){ Placeholder="move: up/down/left/right/bomb/stay" };
-        readonly Button send = new(){ Text="Send Move" };
-        readonly Button back = new(){ Text="Back" };
-        string info = "";
-
-        public WsScreen(Game1 g)
-        {
-            _game = g;
-            send.OnClick = async () => {
-                try {
-                    if (_game.Socket == null)
-                    {
-                        _game.Socket = new GameSocket();
-                        await _game.Socket.ConnectAsync(new Uri(_game.WsUrl));
-                    }
-                    await _game.Socket.SendMoveAsync(gameId.Text, _game.Api.Me!.Id, move.Text);
-                    var (state, error) = await _game.Socket.ReceiveAsync();
-
-                    if (error != null)
-                    {
-                        info = $"{error.ErrorCode}: {error.ErrorMessage}";
-                    }
-                    else
-                    {
-                        string board00 =
-                            (state != null && state.Board != null &&
-                             state.Board.Length > 0 && state.Board[0] != null &&
-                             state.Board[0].Length > 0)
-                            ? state.Board[0][0].ToString()
-                            : "n/a";
-
-                        info = $"OK board00={board00}";
-                    }
-                } catch(Exception ex) { info = ex.Message; }
-            };
-            back.OnClick = () => _game.Screens.Show("menu");
-        }
-        public void OnEnter(){}
-        public void Update(GameTime t)
-        {
-            var m = Mouse.GetState(); var k = Keyboard.GetState();
-            var layout = new Layout(new Rectangle(120,90, 520, 44));
-            gameId.Bounds = layout.Next(40);
-            move.Bounds = layout.Next(40);
-            send.Bounds = layout.Next(44);
-            back.Bounds = layout.Next(44);
-            gameId.Update(t,m,k); move.Update(t,m,k); send.Update(t,m,k); back.Update(t,m,k);
-            if (k.IsKeyDown(Keys.Escape)) _game.Screens.Show("menu");
-        }
-        public void Draw(SpriteBatch sb)
-        {
-            sb.DrawString(Ui.Font, "WebSocket Tester", new Vector2(120, 40), Color.White);
-            gameId.Draw(sb); move.Draw(sb); send.Draw(sb); back.Draw(sb);
-            if (!string.IsNullOrEmpty(info))
-                sb.DrawString(Ui.Font, info, new Vector2(120, 360), new Color(200,220,255));
-        }
-        public void TextInput(char c) { gameId.TextInput(c); move.TextInput(c); }
+        public void TextInput(char c) { rounds.TextInput(c); limit.TextInput(c); }
     }
 }

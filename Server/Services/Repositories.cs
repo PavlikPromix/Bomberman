@@ -39,8 +39,8 @@ public class InMemoryLobbyRepo : ILobbyRepo
 {
     private readonly ConcurrentDictionary<string, Lobby> _lobbies = new();
     private readonly ConcurrentDictionary<string, int> _max = new();
-    private readonly ConcurrentDictionary<string, string> _lobbyCode = new(); // lobbyId -> CODE
-    private readonly ConcurrentDictionary<string, string> _codeToLobby = new(); // CODE -> lobbyId
+    private readonly ConcurrentDictionary<string, string> _lobbyCode = new();
+    private readonly ConcurrentDictionary<string, string> _codeToLobby = new();
     private static readonly char[] CodeAlphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ".ToCharArray();
 
     private static string NewCode(HashSet<string> existing)
@@ -63,12 +63,10 @@ public class InMemoryLobbyRepo : ILobbyRepo
         _lobbies[lobby.LobbyId] = lobby;
         _max[lobby.LobbyId] = maxPlayers;
 
-        // Assign unique short code
         var existing = new HashSet<string>(_codeToLobby.Keys, StringComparer.OrdinalIgnoreCase);
         var code = NewCode(existing);
         _lobbyCode[lobby.LobbyId] = code;
         _codeToLobby[code.ToUpperInvariant()] = lobby.LobbyId;
-
         return lobby;
     }
 
@@ -102,7 +100,7 @@ public class InMemoryLobbyRepo : ILobbyRepo
 
 public interface IGameRepo
 {
-    GameState StartForLobby(Lobby lobby);
+    GameState StartForLobby(Lobby lobby, int roundsToWin, int bombLimit);
     GameState? Get(string gameId);
     GameState? GetByLobby(string lobbyId);
     GameState ApplyMove(string gameId, string playerId, string move);
@@ -113,7 +111,6 @@ internal class Bomb
 {
     public int X, Y;
     public int Fuse;      // ticks till explode
-    public int Flames;    // ticks while flames visible
 }
 
 internal class Game
@@ -124,31 +121,33 @@ internal class Game
     public bool Active = true;
 
     public const int W = 25, H = 25;
-    // Walls: 0 empty, 1 solid, 2 box (destructible)
+
     public int[,] Walls = new int[H, W];
+    public int[,] BaseWalls = new int[H, W]; // to rebuild crates each round
+
     public List<Bomb> Bombs = new();
     public List<(int X,int Y,int Ticks)> Fire = new();
     public Dictionary<string,(int X,int Y,bool Alive)> Pos = new(); // by userId
 
+    public Dictionary<string,int> Scores = new();
+    public int RoundsToWin = 5;
+    public int BombLimit = 3;
+    public Dictionary<string,int> BombsByPlayer = new(); // active count
+    public string? WinnerId = null;
+
     public GameState BuildState()
     {
-        // Build a fresh board from components
         var board = new int[H][];
         for (int y=0;y<H;y++) { board[y] = new int[W]; }
         for (int y=0;y<H;y++) for (int x=0;x<W;x++) board[y][x] = 0;
 
-        // Walls first
         for (int y=0;y<H;y++)
             for (int x=0;x<W;x++)
                 if (Walls[y,x] != 0) board[y][x] = Walls[y,x];
 
-        // Bombs
         foreach (var b in Bombs) board[b.Y][b.X] = 20;
-
-        // Fire
         foreach (var f in Fire) board[f.Y][f.X] = 30;
 
-        // Players (encode 11+index)
         for (int i=0;i<Players.Count;i++)
         {
             var u = Players[i];
@@ -156,34 +155,46 @@ internal class Game
                 board[p.Y][p.X] = 11 + i;
         }
 
-        return new GameState { GameId = GameId, LobbyId = LobbyId, Players = Players, Board = board, Active = Active };
+        return new GameState {
+            GameId = GameId, LobbyId = LobbyId, Players = Players, Board = board, Active = Active,
+            Scores = new Dictionary<string,int>(Scores), RoundsToWin = RoundsToWin, WinnerId = WinnerId
+        };
     }
 }
 
 public class InMemoryGameRepo : IGameRepo
 {
-    private readonly ConcurrentDictionary<string, Game> _games = new(); // by gameId
-    private readonly ConcurrentDictionary<string, string> _byLobby = new(); // lobbyId -> gameId
+    private readonly ConcurrentDictionary<string, Game> _games = new();
+    private readonly ConcurrentDictionary<string, string> _byLobby = new();
+    private readonly IUserRepo _users;
 
-    public GameState StartForLobby(Lobby lobby)
+    public InMemoryGameRepo(IUserRepo users) { _users = users; }
+
+    public GameState StartForLobby(Lobby lobby, int roundsToWin, int bombLimit)
     {
         var g = new Game
         {
             GameId = Guid.NewGuid().ToString(),
             LobbyId = lobby.LobbyId,
             Players = lobby.Players.ToList(),
-            Active = true
+            Active = true,
+            RoundsToWin = roundsToWin,
+            BombLimit = bombLimit
         };
 
-        // Map generation: border solid, periodic boxes
+        // Map generation: border solid, pillars, destructible boxes pattern
         for (int y=0;y<Game.H;y++)
         for (int x=0;x<Game.W;x++)
         {
-            if (x==0 || y==0 || x==Game.W-1 || y==Game.H-1) g.Walls[y,x] = 1;
-            else if ((x%2==0 && y%2==0)) g.Walls[y,x] = 1; // pillars
-            else if ((x+y)%5==0) g.Walls[y,x] = 2; // boxes
+            int v = 0;
+            if (x==0 || y==0 || x==Game.W-1 || y==Game.H-1) v = 1;
+            else if (x%2==0 && y%2==0) v = 1;
+            else if ((x+y)%5==0) v = 2;
+            g.Walls[y,x] = v;
+            g.BaseWalls[y,x] = v;
         }
-        // Spawn corners near free cells
+
+        // Spawn corners & clear nearby crates
         void clear3x3(int cx,int cy){
             for(int yy=Math.Max(1,cy-1); yy<=Math.Min(Game.H-2,cy+1); yy++)
                 for(int xx=Math.Max(1,cx-1); xx<=Math.Min(Game.W-2,cx+1); xx++)
@@ -195,11 +206,13 @@ public class InMemoryGameRepo : IGameRepo
             var s = spawns[i];
             clear3x3(s.X,s.Y);
             g.Pos[u.Id] = (s.X,s.Y,true);
+            g.Scores[u.Id] = 0;
+            g.BombsByPlayer[u.Id] = 0;
         }
 
         _games[g.GameId] = g;
         _byLobby[g.LobbyId] = g.GameId;
-        Console.WriteLine($"[Game] Started {g.GameId} for lobby {g.LobbyId}");
+        Console.WriteLine($"[Game] Started {g.GameId} for lobby {g.LobbyId} (to {g.RoundsToWin}, limit {g.BombLimit})");
         return g.BuildState();
     }
 
@@ -218,17 +231,19 @@ public class InMemoryGameRepo : IGameRepo
     {
         if (!AllowedMoves.Contains(move)) throw new ArgumentException("Invalid move.");
         if (!_games.TryGetValue(gameId, out var g)) throw new ArgumentException("Game not found.");
-        if (!g.Active) throw new ArgumentException("Game not active.");
+        if (!g.Active) return g.BuildState();
         if (!g.Pos.ContainsKey(playerId)) throw new UnauthorizedAccessException("Player not in game.");
 
         var (x,y,alive) = g.Pos[playerId];
-        if (!alive) { g.Pos[playerId] = (x,y,true); return g.BuildState(); }
+        if (!alive) return g.BuildState();
 
         if (string.Equals(move,"bomb",StringComparison.OrdinalIgnoreCase))
         {
-            // place bomb if cell has no bomb
-            if (!g.Bombs.Any(b => b.X==x && b.Y==y))
-                g.Bombs.Add(new Bomb { X=x, Y=y, Fuse=20, Flames=0 }); // ~2s at 100ms tick
+            if (g.BombsByPlayer[playerId] < g.BombLimit && !g.Bombs.Any(b => b.X==x && b.Y==y))
+            {
+                g.Bombs.Add(new Bomb { X=x, Y=y, Fuse=20 }); // ~2s
+                g.BombsByPlayer[playerId] = g.BombsByPlayer[playerId] + 1;
+            }
             return g.BuildState();
         }
 
@@ -257,16 +272,18 @@ public class InMemoryGameRepo : IGameRepo
             var g = kv.Value;
             if (!g.Active) continue;
 
-            // bombs: count down to explosion
+            // bombs: countdown and explode
             for (int i=g.Bombs.Count-1; i>=0; i--)
             {
                 var b = g.Bombs[i];
                 if (b.Fuse > 0) b.Fuse--;
                 if (b.Fuse == 0)
                 {
-                    // explode: flames persist a few ticks
                     Explode(g, b.X, b.Y, radius:3);
                     g.Bombs.RemoveAt(i);
+                    // free bomb slots for all players currently standing on that cell (owner-agnostic simple model)
+                    foreach (var id in g.BombsByPlayer.Keys.ToList())
+                        g.BombsByPlayer[id] = Math.Max(0, g.BombsByPlayer[id] - 1);
                 }
             }
 
@@ -279,17 +296,52 @@ public class InMemoryGameRepo : IGameRepo
                 else g.Fire[i] = f;
             }
 
-            // players hit by fire -> simple respawn to spawn corner
+            // detect deaths
+            var killed = new HashSet<string>();
             foreach (var u in g.Players)
             {
                 var p = g.Pos[u.Id];
+                if (!p.Alive) continue;
                 if (g.Fire.Any(f=>f.X==p.X && f.Y==p.Y))
                 {
-                    // respawn at original spawn
-                    int idx = g.Players.FindIndex(pl => pl.Id == u.Id);
-                    var spawns = new (int X,int Y)[]{ (1,1), (Game.W-2,Game.H-2), (1,Game.H-2), (Game.W-2,1) };
-                    var s = spawns[Math.Clamp(idx,0,spawns.Length-1)];
-                    g.Pos[u.Id] = (s.X,s.Y,true);
+                    killed.Add(u.Id);
+                    g.Pos[u.Id] = (p.X,p.Y,false);
+                }
+            }
+
+            if (killed.Count > 0)
+            {
+                // Check round resolution (2-player rules: if exactly one alive -> that one scores)
+                var aliveIds = g.Pos.Where(kv2 => kv2.Value.Alive).Select(kv2 => kv2.Key).ToList();
+                if (aliveIds.Count == 1)
+                {
+                    var winner = aliveIds[0];
+                    g.Scores[winner] = g.Scores[winner] + 1;
+
+                    // new round or game over
+                    if (g.Scores[winner] >= g.RoundsToWin)
+                    {
+                        g.Active = false;
+                        g.WinnerId = winner;
+                        // update leaderboard/user stats
+                        foreach (var u in g.Players)
+                        {
+                            var user = _users.FindById(u.Id);
+                            if (user == null) continue;
+                            user.Stats.GamesPlayed++;
+                            if (u.Id == winner) user.Stats.GamesWon++;
+                            if (g.Scores.TryGetValue(u.Id, out var pts)) user.Stats.TotalScore += pts;
+                        }
+                    }
+                    else
+                    {
+                        ResetRound(g);
+                    }
+                }
+                else
+                {
+                    // simultaneous kills or none alive: simple draw -> reset round
+                    ResetRound(g);
                 }
             }
 
@@ -298,11 +350,33 @@ public class InMemoryGameRepo : IGameRepo
         return updated;
     }
 
+    private static void ResetRound(Game g)
+    {
+        // Reset crates from base pattern and clear fire/bombs
+        for (int y=0;y<Game.H;y++)
+            for (int x=0;x<Game.W;x++)
+                g.Walls[y,x] = g.BaseWalls[y,x];
+
+        g.Bombs.Clear();
+        g.Fire.Clear();
+        foreach (var k in g.BombsByPlayer.Keys.ToList()) g.BombsByPlayer[k] = 0;
+
+        // respawn at corners
+        var spawns = new (int X,int Y)[]{ (1,1), (Game.W-2,Game.H-2), (1,Game.H-2), (Game.W-2,1) };
+        for(int i=0;i<g.Players.Count && i<spawns.Length; i++){
+            var u = g.Players[i];
+            var s = spawns[i];
+            // ensure at least paths cleared
+            for(int yy=Math.Max(1,s.Y-1); yy<=Math.Min(Game.H-2,s.Y+1); yy++)
+                for(int xx=Math.Max(1,s.X-1); xx<=Math.Min(Game.W-2,s.X+1); xx++)
+                    if (g.Walls[yy,xx]==2) g.Walls[yy,xx]=0;
+            g.Pos[u.Id] = (s.X,s.Y,true);
+        }
+    }
+
     private static void Explode(Game g, int cx, int cy, int radius)
     {
-        // center
         g.Fire.Add((cx,cy,5)); // ~0.5s
-        // four directions
         foreach(var dir in new[]{ (1,0),(-1,0),(0,1),(0,-1) })
         {
             int x=cx, y=cy;
@@ -310,9 +384,9 @@ public class InMemoryGameRepo : IGameRepo
             {
                 x += dir.Item1; y += dir.Item2;
                 if (x<=0 || y<=0 || x>=Game.W-1 || y>=Game.H-1) break;
-                if (g.Walls[y,x] == 1) break; // solid blocks flame
+                if (g.Walls[y,x] == 1) break;
                 g.Fire.Add((x,y,5));
-                if (g.Walls[y,x] == 2) { g.Walls[y,x] = 0; break; } // destroy box and stop
+                if (g.Walls[y,x] == 2) { g.Walls[y,x] = 0; break; }
             }
         }
     }

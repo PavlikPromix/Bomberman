@@ -32,10 +32,6 @@ public class GameState
     public List<User> Players { get; set; } = new();
     public int[][] Board { get; set; } = Array.Empty<int[]>();
     public bool Active { get; set; }
-    public System.Collections.Generic.Dictionary<string, int> Scores { get; set; } = new();
-    public int RoundsToWin { get; set; } = 5;
-    public string? WinnerId { get; set; }
-
 }
 
 public class ErrorResponse

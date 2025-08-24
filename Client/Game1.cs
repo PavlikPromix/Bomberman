@@ -18,12 +18,13 @@ public class Game1 : Game
     public ScreenManager Screens = new();
     public LobbyScreen LobbyScreenRef = null!;
     public GameplayScreen GameplayRef = null!;
+    public FinalScreen FinalRef = null!;
 
     public Game1()
     {
         _g = new GraphicsDeviceManager(this);
-        _g.PreferredBackBufferWidth = 800;
-        _g.PreferredBackBufferHeight = 600;
+        _g.PreferredBackBufferWidth = 960;
+        _g.PreferredBackBufferHeight = 720;
         Content.RootDirectory = "Content";
         IsMouseVisible = true;
     }
@@ -48,7 +49,8 @@ public class Game1 : Game
         Screens.Add("lobby", LobbyScreenRef);
         GameplayRef = new GameplayScreen(this);
         Screens.Add("gameplay", GameplayRef);
-        Screens.Add("ws", new WsScreen(this));
+        FinalRef = new FinalScreen(this);
+        Screens.Add("final", FinalRef);
         Screens.Show("login");
     }
 
@@ -64,7 +66,7 @@ public class Game1 : Game
 
     protected override void Draw(GameTime gameTime)
     {
-        GraphicsDevice.Clear(new Color(70,100,170));
+        GraphicsDevice.Clear(Color.Black);
         _sb.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, null, null);
         Screens.Draw(_sb);
         _sb.End();
