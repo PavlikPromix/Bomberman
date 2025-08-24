@@ -188,7 +188,7 @@ namespace Bomberman.Client.Screens
         public void TextInput(char c) { }
     }
 
-    // ---------- In-Lobby screen (now with Start for leader) ----------
+    // ---------- In-Lobby screen (with Start & auto-transition to gameplay) ----------
     public class LobbyScreen : IScreen
     {
         readonly Game1 _game;
@@ -198,7 +198,6 @@ namespace Bomberman.Client.Screens
         string _code = "";
         double _poll;
         string _info = "";
-        string _gameId = "";
 
         public LobbyScreen(Game1 g)
         {
@@ -210,15 +209,15 @@ namespace Bomberman.Client.Screens
                 try
                 {
                     var gs = await _game.Api.StartLobbyAsync(_lobby.LobbyId);
-                    _gameId = gs.GameId;
-                    _info = $"Started game: {_gameId}";
-                    // reflect status locally
+                    _info = $"Started game: {gs.GameId}";
                     _lobby.Status = "in-progress";
+                    _game.GameplayRef.SetGame(_lobby.LobbyId, gs.GameId, gs);
+                    _game.Screens.Show("gameplay");
                 }
                 catch (Exception ex) { _info = ex.Message; }
             };
         }
-        public void SetLobby(Lobby lobby, string code) { _lobby = lobby; _code = code; _info = ""; _gameId = ""; }
+        public void SetLobby(Lobby lobby, string code) { _lobby = lobby; _code = code; _info = ""; }
         public void OnEnter() { _poll = 0; }
         public async void Update(GameTime t)
         {
@@ -227,25 +226,34 @@ namespace Bomberman.Client.Screens
             start.Bounds = new Rectangle(430, 90, 180, 44);
             back.Update(t,m,k);
 
-            // Poll lobby state every 2s
+            // Poll lobby state every 0.5s
             _poll += t.ElapsedGameTime.TotalSeconds;
-            if (_poll >= 2.0 && _lobby != null)
+            if (_poll >= 0.5 && _lobby != null)
             {
                 _poll = 0;
-                try { _lobby = await _game.Api.GetLobbyAsync(_lobby.LobbyId); } catch { /* ignore transient */ }
+                try
+                {
+                    _lobby = await _game.Api.GetLobbyAsync(_lobby.LobbyId);
+                    // if game started (guest path), hop into gameplay
+                    if (!string.Equals(_lobby.Status, "waiting", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var gs = await _game.Api.GetActiveGameByLobbyAsync(_lobby.LobbyId);
+                        _game.GameplayRef.SetGame(_lobby.LobbyId, gs.GameId, gs);
+                        _game.Screens.Show("gameplay");
+                        return;
+                    }
+                } catch { /* ignore transient */ }
             }
 
-            // Leader-only visibility & enablement
+            // Leader-only visibility & requires >=2 players
             if (_lobby != null && _game.Api.Me != null && _lobby.Players.Count >= 2 &&
-                string.Equals(_lobby.Status, "waiting", System.StringComparison.OrdinalIgnoreCase) && _lobby.Players[0].Id == _game.Api.Me.Id)
+                string.Equals(_lobby.Status, "waiting", StringComparison.OrdinalIgnoreCase) &&
+                _lobby.Players.Count > 0 && _lobby.Players[0].Id == _game.Api.Me.Id)
             {
                 start.Visible = true;
                 start.Update(t,m,k);
             }
-            else
-            {
-                start.Visible = false;
-            }
+            else start.Visible = false;
 
             if (k.IsKeyDown(Keys.Escape)) _game.Screens.Show("menu");
         }
@@ -276,7 +284,6 @@ namespace Bomberman.Client.Screens
                 sb.DrawString(Ui.Font, $"{i+1}. {u.Username}", new Vector2(140, y), Color.White);
                 y += Ui.Font.LineSpacing + 4;
             }
-
             if (!string.IsNullOrEmpty(_info))
                 sb.DrawString(Ui.Font, _info, new Vector2(120, y + 20), new Color(200,220,255));
 

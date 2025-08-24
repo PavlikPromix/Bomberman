@@ -66,6 +66,9 @@ public class ApiClient
         return (await res.Content.ReadFromJsonAsync<GameState>())!;
     }
 
+    public async Task<GameState> GetActiveGameByLobbyAsync(string lobbyId)
+        => (await _http.GetFromJsonAsync<GameState>($"/api/game/by-lobby/{lobbyId}"))!;
+
     private class CodeDto { public string Code { get; set; } = ""; }
 }
 

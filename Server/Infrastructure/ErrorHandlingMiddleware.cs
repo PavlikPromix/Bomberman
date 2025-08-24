@@ -7,18 +7,15 @@ namespace Bomberman.Server.Infrastructure;
 public class ErrorHandlingMiddleware
 {
     private readonly RequestDelegate _next;
-    public ErrorHandlingMiddleware(RequestDelegate next) => _next = next;
+    private readonly JsonSerializerOptions _json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+
+    public ErrorHandlingMiddleware(RequestDelegate next) { _next = next; }
 
     public async Task Invoke(HttpContext ctx)
     {
         try
         {
             await _next(ctx);
-            // Map 404 to contract if needed
-            if (ctx.Response.StatusCode == (int)HttpStatusCode.NotFound && !ctx.Response.HasStarted)
-            {
-                await WriteError(ctx, HttpStatusCode.NotFound, "not_found", "Resource not found.");
-            }
         }
         catch (UnauthorizedAccessException ex)
         {
@@ -34,11 +31,13 @@ public class ErrorHandlingMiddleware
         }
     }
 
-    private static async Task WriteError(HttpContext ctx, HttpStatusCode code, string errCode, string msg)
+    private async Task WriteError(HttpContext ctx, HttpStatusCode code, string errCode, string msg)
     {
+        if (ctx.Response.HasStarted) return; // <- key fix
+
         ctx.Response.StatusCode = (int)code;
         ctx.Response.ContentType = "application/json";
-        var payload = JsonSerializer.Serialize(new ErrorResponse { ErrorCode = errCode, ErrorMessage = msg });
-        await ctx.Response.WriteAsync(payload);
+        var payload = JsonSerializer.SerializeToUtf8Bytes(new ErrorResponse { ErrorCode = errCode, ErrorMessage = msg }, _json);
+        await ctx.Response.BodyWriter.WriteAsync(payload);
     }
 }
