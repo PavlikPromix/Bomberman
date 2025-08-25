@@ -112,7 +112,7 @@ namespace Bomberman.Client.Screens
         public void Update(GameTime t)
         {
             var m = Mouse.GetState(); var k = Keyboard.GetState();
-            hello.Text = _game.Api.Me != null ? $"Hello, {_game.Api.Me.Username} ({_game.Api.Me.Id})" : "Hello";
+            hello.Text = _game.Api.Me != null ? $"Hello, {_game.Api.Me.Username}" : "Hello";
             var layout = new Layout(new Rectangle(140,120, 460, 48), 14);
             hello.Bounds = new Rectangle(140, 70, 700, 44);
             leaderboard.Bounds = layout.Next(48);
@@ -192,12 +192,14 @@ namespace Bomberman.Client.Screens
         readonly Button back = new(){ Text="Leave Lobby" };
         readonly Button start = new(){ Text="Start (Leader)" };
         readonly Label settingsTitle = new(){ Text="Settings (leader only)" , Color=new Color(200,220,255)};
-        readonly TextBox rounds = new(){ Placeholder="Rounds to win (default 5)" };
-        readonly TextBox limit = new(){ Placeholder="Bomb limit (default 3)" };
+        readonly Label roundsLabel = new(){ Text="Rounds to win" , Color=new Color(180,200,240)};
+        readonly Label bombsLabel  = new(){ Text="Bomb limit" ,   Color=new Color(180,200,240)};
+        readonly TextBox rounds = new(){ Placeholder="Rounds to win" };
+        readonly TextBox limit = new(){ Placeholder="Bomb limit" };
         Lobby? _lobby;
         string _code = "";
         double _poll;
-        string _info = "";
+        string _info = ""; bool _settingsFetched = false;
 
         public LobbyScreen(Game1 g)
         {
@@ -231,8 +233,8 @@ namespace Bomberman.Client.Screens
         public async void Update(GameTime t)
         {
             var m = Mouse.GetState(); var k = Keyboard.GetState();
-            back.Bounds = new Rectangle(30,30,140,40);
-            start.Bounds = new Rectangle(680, 110, 200, 48);
+            back.Bounds = new Rectangle(30,30,180,40);
+            start.Bounds = new Rectangle(620, 320, 260, 48);
             back.Update(t,m,k);
 
             // Poll lobby state every 0.5s
@@ -256,18 +258,31 @@ namespace Bomberman.Client.Screens
             bool isLeader = _lobby != null && _game.Api.Me != null && _lobby.Players.Count > 0 && _lobby.Players[0].Id == _game.Api.Me.Id;
             start.Visible = isLeader && _lobby != null && _lobby.Players.Count >= 2 && string.Equals(_lobby.Status, "waiting", StringComparison.OrdinalIgnoreCase);
             if (start.Visible) start.Update(t,m,k);
+            // Load settings once from server
+            if (!_settingsFetched && _lobby != null) {
+                try {
+                    var s = await _game.Api.GetLobbySettingsAsync(_lobby.LobbyId);
+                    rounds.Text = s.RoundsToWin.ToString();
+                    limit.Text  = s.BombLimit.ToString();
+                    _settingsFetched = true;
+                } catch { }
+            }
 
             // layout for settings area
             settingsTitle.Visible = isLeader;
+            roundsLabel.Visible = isLeader;
+            bombsLabel.Visible  = isLeader;
             rounds.Visible = isLeader;
             limit.Visible = isLeader;
 
             if (isLeader && _lobby != null)
             {
-                var layout = new Layout(new Rectangle(680, 160, 220, 44), 12);
-                settingsTitle.Bounds = new Rectangle(680, 80, 260, 30);
-                rounds.Bounds = layout.Next(44);
-                limit.Bounds = layout.Next(44);
+                settingsTitle.Bounds = new Rectangle(620, 90, 320, 30);
+                // Labels above textboxes for clarity
+                roundsLabel.Bounds  = new Rectangle(620, 160, 260, 22);
+                rounds.Bounds       = new Rectangle(620, 186, 260, 44);
+                bombsLabel.Bounds   = new Rectangle(620, 238, 260, 22);
+                limit.Bounds        = new Rectangle(620, 264, 260, 44);
                 rounds.Update(t,m,k); limit.Update(t,m,k);
             }
 
@@ -290,7 +305,6 @@ namespace Bomberman.Client.Screens
             var scale = Math.Min( (box.Width-20) / Math.Max(1f, measure.X), (box.Height-20) / Math.Max(1f, measure.Y) );
             sb.DrawString(Ui.Font, _code, new Vector2(box.X + 10, box.Y + 10), Color.White, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
 
-            sb.DrawString(Ui.Font, $"Lobby: {_lobby.LobbyId}", new Vector2(160, 230), new Color(180,200,240));
             sb.DrawString(Ui.Font, $"Status: {_lobby.Status}", new Vector2(160, 260), new Color(180,200,240));
             sb.DrawString(Ui.Font, "Players:", new Vector2(160, 300), Color.White);
             int y = 330;
@@ -303,7 +317,11 @@ namespace Bomberman.Client.Screens
             if (!string.IsNullOrEmpty(_info))
                 sb.DrawString(Ui.Font, _info, new Vector2(160, y + 20), new Color(200,220,255));
 
-            settingsTitle.Draw(sb); rounds.Draw(sb); limit.Draw(sb);
+            settingsTitle.Draw(sb);
+            roundsLabel.Draw(sb);
+            rounds.Draw(sb);
+            bombsLabel.Draw(sb);
+            limit.Draw(sb);
             start.Draw(sb);
             back.Draw(sb);
         }

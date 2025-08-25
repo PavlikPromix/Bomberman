@@ -21,11 +21,12 @@ namespace Bomberman.Client.Screens
         const int OriginX = 180; // centered in 960x720 with sidebar
         const int OriginY = 40;  // leave space for HUD
 
-        // movement repeat
+        // movement repeat (slower, timer-based)
         string? _heldDir = null;
-        double _sinceRepeat = 0;
-        const double InitialDelay = 0.15; // seconds before auto-repeat starts
-        const double RepeatEvery  = 0.10; // seconds between steps
+        double _heldElapsed = 0.0;    // time holding current dir
+        double _repeatElapsed = 0.0;  // time since last auto-step
+        const double InitialDelay = 0.20; // wait this long before repeats start
+        const double RepeatEvery  = 0.20; // then step every this many seconds
 
         bool _spacePrev = false;
 
@@ -57,7 +58,7 @@ namespace Bomberman.Client.Screens
                 onError: (e) => { }
             );
             await _game.Socket.SendMoveAsync(GameId, _game.Api.Me!.Id, "noop");
-            _heldDir = null; _sinceRepeat = 0; _spacePrev = false;
+            _heldDir = null; _heldElapsed = 0; _repeatElapsed = 0; _spacePrev = false;
         }
 
         bool IsValid(GameState? s) =>
@@ -71,35 +72,50 @@ namespace Bomberman.Client.Screens
 
             if (!IsValid(_state)) return;
 
-            // determine held direction priority (Right, Left, Down, Up; tweak as desired)
+            // determine held direction priority
             string? dir = null;
             if (k.IsKeyDown(Keys.Right) || k.IsKeyDown(Keys.D)) dir = "right";
             else if (k.IsKeyDown(Keys.Left) || k.IsKeyDown(Keys.A)) dir = "left";
             else if (k.IsKeyDown(Keys.Down) || k.IsKeyDown(Keys.S)) dir = "down";
             else if (k.IsKeyDown(Keys.Up) || k.IsKeyDown(Keys.W)) dir = "up";
 
+            double dt = t.ElapsedGameTime.TotalSeconds;
+
+            async System.Threading.Tasks.Task send(string mv) =>
+                await _game.Socket!.SendMoveAsync(GameId, _game.Api.Me!.Id, mv);
+
             if (dir != _heldDir)
             {
+                // new direction: instantaneous single step, then start timers fresh
                 _heldDir = dir;
-                _sinceRepeat = 0;
-                if (dir != null) await _game.Socket!.SendMoveAsync(GameId, _game.Api.Me!.Id, dir); // immediate step on direction change
+                _heldElapsed = 0;
+                _repeatElapsed = 0;
+                if (dir != null) await send(dir);
             }
             else if (dir != null)
             {
-                _sinceRepeat += t.ElapsedGameTime.TotalSeconds;
-                if (_sinceRepeat >= InitialDelay)
-                {
-                    while (_sinceRepeat >= InitialDelay + RepeatEvery)
-                        _sinceRepeat -= RepeatEvery; // keep rhythm if frame hiccups
+                _heldElapsed += dt;
 
-                    await _game.Socket!.SendMoveAsync(GameId, _game.Api.Me!.Id, dir);
+                if (_heldElapsed >= InitialDelay)
+                {
+                    _repeatElapsed += dt;
+                    if (_repeatElapsed >= RepeatEvery)
+                    {
+                        _repeatElapsed = 0;
+                        await send(dir);
+                    }
                 }
+            }
+            else
+            {
+                // no direction held
+                _heldElapsed = 0; _repeatElapsed = 0;
             }
 
             // bombs are edge-triggered on Space
             bool spaceNow = k.IsKeyDown(Keys.Space);
             if (spaceNow && !_spacePrev)
-                await _game.Socket!.SendMoveAsync(GameId, _game.Api.Me!.Id, "bomb");
+                await send("bomb");
             _spacePrev = spaceNow;
         }
 
@@ -128,7 +144,7 @@ namespace Bomberman.Client.Screens
                     int v = row[x];
                     var r = new Rectangle(OriginX + x*Cell, OriginY + y*Cell, Cell, Cell);
 
-                    if (v == 1) sb.DrawRect(r, new Color(70,110,190));            // solid: higher contrast on black
+                    if (v == 1) sb.DrawRect(r, new Color(70,110,190));            // solid: high contrast on black
                     else if (v == 2) sb.DrawRect(r.Pad(3), new Color(200,170,80)); // crate
                     else if (v == 20) DrawCircle(sb, r.Center, Cell/3, new Color(230,230,240)); // bomb
                     else if (v == 30) sb.DrawRect(r.Pad(2), new Color(255,120,60)); // flame
