@@ -4,7 +4,7 @@ using Bomberman.Server.Services;
 using Microsoft.AspNetCore.Mvc;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddSingleton<IUserRepo, InMemoryUserRepo>();
+builder.Services.AddSingleton<IUserRepo, SqliteUserRepo>();
 builder.Services.AddSingleton<ILobbyRepo, InMemoryLobbyRepo>();
 builder.Services.AddSingleton<IGameRepo>(sp => new InMemoryGameRepo(sp.GetRequiredService<IUserRepo>()));
 builder.Services.AddSingleton<ILobbySettingsRepo, InMemoryLobbySettingsRepo>();

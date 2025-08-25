@@ -45,7 +45,7 @@ namespace Bomberman.Client.Screens
                 if (busy) return;
                 busy = true; err.Text = "";
                 try {
-                    await _game.Api.LoginAsync(user.Text, pass.Text.Length>0?pass.Text:"x");
+                    await _game.Api.LoginAsync(user.Text, pass.Text);
                     _game.Screens.Show("menu");
                 } catch (Exception ex) { err.Text = ex.Message; }
                 busy = false;
