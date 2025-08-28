@@ -7,11 +7,28 @@ namespace Bomberman.Client.UI
 {
     public static class Ui
     {
+        public static Texture2D Pixel = null!;
         public static SpriteFont Font = null!;
-        public static Texture2D Pixel = null!; // 1x1 white
 
-        public static Rectangle Pad(this Rectangle r, int p) =>
-            new Rectangle(r.X + p, r.Y + p, r.Width - p*2, r.Height - p*2);
+        /// <summary>Return only printable ASCII (32..126). Drops everything else (e.g., Cyrillic).</summary>
+        public static string SafeAscii(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return string.Empty;
+            var arr = new char[s.Length];
+            int j = 0;
+            foreach (var ch in s)
+                if (ch >= ' ' && ch <= '~') arr[j++] = ch;
+            return new string(arr, 0, j);
+        }
+
+        /// <summary>Draws text safely: strips non-ASCII and swallows any unexpected font error.</summary>
+        public static void SafeDrawString(this SpriteBatch sb, string text, Vector2 pos, Color color, float scale = 1f)
+        {
+            var clean = SafeAscii(text ?? "");
+            if (clean.Length == 0) return;
+            try { sb.DrawString(Font, clean, pos, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f); }
+            catch { /* never crash the UI */ }
+        }
 
         public static void DrawRect(this SpriteBatch sb, Rectangle r, Color c) => sb.Draw(Pixel, r, c);
 
@@ -22,137 +39,173 @@ namespace Bomberman.Client.UI
             sb.DrawRect(new Rectangle(r.X, r.Y, thickness, r.Height), c);
             sb.DrawRect(new Rectangle(r.Right - thickness, r.Y, thickness, r.Height), c);
         }
-    }
 
-    public abstract class Widget
-    {
-        public Rectangle Bounds;
-        public bool Visible = true;
-        public virtual void Update(GameTime t, MouseState m, KeyboardState k) { }
-        public virtual void TextInput(char c) { }
-        public virtual void Draw(SpriteBatch sb) { }
-        public bool Contains(Point p) => Bounds.Contains(p);
-    }
-
-    public class Label : Widget
-    {
-        public string Text = "";
-        public Color Color = Color.White;
-        public override void Draw(SpriteBatch sb)
-        {
-            if (!Visible) return;
-            sb.DrawString(Ui.Font, Text, new Vector2(Bounds.X, Bounds.Y), Color);
-        }
-    }
-
-    public class Button : Widget
-    {
-        public string Text = "Button";
-        public Action? OnClick;
-        bool _wasDown;
-        public override void Update(GameTime t, MouseState m, KeyboardState k)
-        {
-            var over = Visible && Contains(m.Position);
-            var nowDown = over && m.LeftButton == ButtonState.Pressed;
-            if (_wasDown && !nowDown && over) OnClick?.Invoke();
-            _wasDown = nowDown;
-        }
-        public override void Draw(SpriteBatch sb)
-        {
-            if (!Visible) return;
-            var over = Contains(Mouse.GetState().Position);
-            sb.DrawRect(Bounds, over ? new Color(60,60,60) : new Color(40,40,40));
-            sb.DrawFrame(Bounds, new Color(70,70,70));
-            var size = Ui.Font.MeasureString(Text);
-            var pos = new Vector2(Bounds.X + (Bounds.Width - size.X)/2, Bounds.Y + (Bounds.Height - size.Y)/2);
-            sb.DrawString(Ui.Font, Text, pos, Color.White);
-        }
-    }
-
-    public class TextBox : Widget
-    {
-        public string Text = "";
-        public string Placeholder = "";
-        public bool Focused;
-
-        // Proper backspace handling (edge + repeat)
-        bool _backHeld;
-        double _backTimer;
-        const double InitialDelay = 0.35; // seconds before repeat starts
-        const double RepeatRate   = 0.05; // seconds between repeats
-
-        double caretBlink;
-
-        public override void Update(GameTime t, MouseState m, KeyboardState k)
-        {
-            if (!Visible) return;
-
-            // Focus on click
-            if (m.LeftButton == ButtonState.Pressed)
-                Focused = Contains(m.Position);
-
-            // Backspace edge + repeat timing
-            var backDown = Focused && k.IsKeyDown(Keys.Back);
-            if (backDown && !_backHeld)
-            {
-                DeleteOne();
-                _backTimer = InitialDelay;
-            }
-            else if (backDown && _backHeld)
-            {
-                _backTimer -= t.ElapsedGameTime.TotalSeconds;
-                if (_backTimer <= 0)
-                {
-                    DeleteOne();
-                    _backTimer = RepeatRate;
-                }
-            }
-            else if (!backDown && _backHeld)
-            {
-                _backTimer = 0;
-            }
-            _backHeld = backDown;
-
-            caretBlink += t.ElapsedGameTime.TotalSeconds;
-        }
-
-        private void DeleteOne()
-        {
-            if (Text.Length > 0) Text = Text.Substring(0, Text.Length - 1);
-        }
-
-        public override void TextInput(char c)
-        {
-            if (!Focused) return;
-            if (c == '\r' || c == '\n' || c == '\b') return; // ignore enter/backspace from TextInput
-            if (!char.IsControl(c)) Text += c;
-        }
-
-        public override void Draw(SpriteBatch sb)
-        {
-            if (!Visible) return;
-            sb.DrawRect(Bounds, new Color(30,30,30));
-            sb.DrawFrame(Bounds, new Color(70,70,70));
-            var drawText = Text.Length > 0 ? Text : Placeholder;
-            var color = Text.Length > 0 ? Color.White : new Color(170,170,170);
-            var pos = new Vector2(Bounds.X + 8, Bounds.Y + 6);
-            sb.DrawString(Ui.Font, drawText, pos, color);
-
-            if (Focused && ((int)(caretBlink*2)%2)==0)
-            {
-                var size = Ui.Font.MeasureString(Text);
-                var x = (int)(pos.X + size.X + 2);
-                sb.DrawRect(new Rectangle(x, Bounds.Y + 6, 2, Ui.Font.LineSpacing-6), Color.White);
-            }
-        }
+        public static Rectangle Pad(this Rectangle r, int p) =>
+            new Rectangle(r.X + p, r.Y + p, Math.Max(0, r.Width - 2 * p), Math.Max(0, r.Height - 2 * p));
     }
 
     public class Layout
     {
-        public Rectangle Area;
-        int _cursorY;
-        int _gap;
-        public Layout(Rectangle area, int gap = 10) { Area = area; _cursorY = area.Y; _gap = gap; }
-        public Rectangle Next(int height) { var r = new Rectangle(Area.X, _cursorY, Area.Width, height); _cursorY += height + _gap; return r; }
+        private Rectangle _r;
+        private readonly int _gap;
+        public Layout(Rectangle r, int gap) { _r = r; _gap = gap; }
+        public Rectangle Next(int h)
+        {
+            var outR = new Rectangle(_r.X, _r.Y, _r.Width, h);
+            _r.Y += h + _gap;
+            return outR;
+        }
+    }
+
+    public class Label
+    {
+        public string Text { get; set; } = "";
+        public Color Color { get; set; } = Color.White;
+        public Rectangle Bounds { get; set; }
+        public bool Visible { get; set; } = true;
+
+        public void Draw(SpriteBatch sb)
+        {
+            if (!Visible) return;
+            sb.SafeDrawString(Text, new Vector2(Bounds.X, Bounds.Y), Color);
+        }
+    }
+
+    public class Button
+    {
+        public string Text { get; set; } = "Button";
+        public Rectangle Bounds { get; set; }
+        public bool Visible { get; set; } = true;
+        public Action? OnClick { get; set; }
+        private bool _pressed = false;
+
+        public void Update(GameTime t, MouseState m, KeyboardState k)
+        {
+            if (!Visible) return;
+            var inside = Bounds.Contains(m.Position);
+            bool down = m.LeftButton == ButtonState.Pressed;
+            if (down && inside && !_pressed) _pressed = true;
+            if (!down && _pressed)
+            {
+                if (inside) OnClick?.Invoke();
+                _pressed = false;
+            }
+        }
+
+        public void Draw(SpriteBatch sb)
+        {
+            if (!Visible) return;
+            sb.DrawRect(Bounds, new Color(60, 60, 60));
+            sb.DrawFrame(Bounds, new Color(70, 70, 70), 2);
+            var txt = Ui.SafeAscii(Text);
+            var size = Ui.Font.MeasureString(txt);
+            var pos = new Vector2(Bounds.X + (Bounds.Width - size.X) / 2f, Bounds.Y + (Bounds.Height - size.Y) / 2f);
+            sb.SafeDrawString(txt, pos, Color.White);
+        }
+    }
+
+    public class TextBox
+    {
+        public string Text { get; set; } = "";
+        public string Placeholder { get; set; } = "";
+        public Rectangle Bounds { get; set; }
+        public bool Focused { get; set; } = false;
+        public bool Visible { get; set; } = true;
+
+        // Caret/blink
+        private double _blinkTimer = 0;
+        private bool _caretOn = true;
+
+        public void Update(GameTime t, MouseState m, KeyboardState k)
+        {
+            if (!Visible) return;
+
+            if (m.LeftButton == ButtonState.Pressed)
+                Focused = Bounds.Contains(m.Position);
+
+            // Blink only when focused
+            if (Focused)
+            {
+                _blinkTimer += t.ElapsedGameTime.TotalSeconds;
+                if (_blinkTimer >= 0.5) { _blinkTimer = 0; _caretOn = !_caretOn; }
+            }
+            else
+            {
+                _blinkTimer = 0;
+                _caretOn = false;
+            }
+        }
+
+        /// <summary>
+        /// Accept only printable ASCII (32..126). Ignore anything else (e.g., Cyrillic) to prevent crashes.
+        /// Backspace and Enter come as TextInput chars (\b and \r).
+        /// </summary>
+        public void TextInput(char c)
+        {
+            if (!Focused || !Visible) return;
+
+            // Backspace arrives as \b
+            if (c == '\b')
+            {
+                if (Text.Length > 0) Text = Text.Substring(0, Text.Length - 1);
+                // make caret visible immediately after edit
+                _caretOn = true; _blinkTimer = 0;
+                return;
+            }
+
+            // Ignore non-ASCII / control chars
+            if (c < ' ' || c > '~') return;
+
+            Text += c;
+            // reset blink so caret shows after typing
+            _caretOn = true; _blinkTimer = 0;
+        }
+
+        public void Draw(SpriteBatch sb)
+        {
+            if (!Visible) return;
+            var bg = new Color(40, 40, 40);
+            var br = new Color(70, 70, 70);
+            sb.DrawRect(Bounds, bg);
+            sb.DrawFrame(Bounds, br, 2);
+
+            var asciiText = Ui.SafeAscii(Text);
+            bool showPlaceholder = asciiText.Length == 0 && !Focused;
+            string display = showPlaceholder ? Ui.SafeAscii(Placeholder) : asciiText;
+            var col = showPlaceholder ? new Color(150, 150, 150) : Color.White;
+
+            // Text clipping (left-trim to keep caret at the right edge when overflowing)
+            var maxW = Bounds.Width - 12;
+            string clipped = display;
+            while (clipped.Length > 0 && Ui.Font.MeasureString(clipped).X > maxW)
+                clipped = clipped.Substring(1);
+
+            // Draw text
+            var textY = Bounds.Y + (Bounds.Height - Ui.Font.LineSpacing) / 2f;
+            sb.SafeDrawString(clipped, new Vector2(Bounds.X + 6, textY), col);
+
+            // Draw caret (only when focused and not showing placeholder)
+            if (Focused)
+            {
+                float caretX;
+                if (asciiText.Length == 0)
+                {
+                    caretX = Bounds.X + 6; // at start when empty
+                }
+                else
+                {
+                    // caret sits after the (possibly clipped) visible text; keep inside box
+                    var fullWidth = Ui.Font.MeasureString(asciiText).X;
+                    caretX = Bounds.X + 6 + Math.Min(fullWidth, maxW);
+                }
+
+                if (_caretOn)
+                {
+                    int caretH = Math.Min(Ui.Font.LineSpacing, Bounds.Height - 6);
+                    var caretRect = new Rectangle((int)caretX, Bounds.Y + (Bounds.Height - caretH) / 2, 2, caretH);
+                    sb.DrawRect(caretRect, new Color(220, 220, 220));
+                }
+            }
+        }
     }
 }
