@@ -1,33 +1,27 @@
-# -------------------- Build stage --------------------
+# ---- Build stage (SDK 9.0) ----
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
-
-# Copy solution and restore
 COPY . .
 WORKDIR /src/Server
 RUN dotnet restore
-
-# Publish
 RUN dotnet publish -c Release -o /app --no-restore
 
-# -------------------- Runtime stage --------------------
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+# ---- Runtime stage (ASP.NET 9.0) ----
+FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
 WORKDIR /app
-
-# App files
 COPY --from=build /app ./
 
-# Create data dir for SQLite (SqliteUserRepo uses ContentRoot/App_Data)
-RUN mkdir -p /app/App_Data
+# Ensure the SQLite data directory exists and is writable by the non-root user
+# Official images provide $APP_UID for the built-in 'app' user.
+RUN mkdir -p /app/App_Data && chown -R $APP_UID /app
 
-# Non-root user (built-in)
+# Run as the built-in non-root user
 USER $APP_UID
 
-# ASP.NET binds on 8080 inside the container
-ENV ASPNETCORE_URLS=http://0.0.0.0:8080 \
+ENV ASPNETCORE_URLS=http://0.0.0.0:5202 \
+    ASPNETCORE_ENVIRONMENT=Production \
+    Logging__LogLevel__Default=Information \
     DOTNET_EnableDiagnostics=0
+EXPOSE 5202
 
-EXPOSE 8080
-
-# Start
 ENTRYPOINT ["dotnet", "Bomberman.Server.dll"]
